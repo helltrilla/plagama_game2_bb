@@ -1,0 +1,7 @@
+{
+  "sendAnalyticsEvents": true,
+  "advertisements": {
+    "minimumDelayBetweenInterstitial": 60
+  },
+  "platforms": {}
+}

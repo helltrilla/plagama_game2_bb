@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Gravity Bones — Crash Test Lab</title>
+    <!-- Playgama Bridge SDK loaded in <head> before game scripts -->
+    <script
+      src="https://bridge.playgama.com/v2/stable/playgama-bridge.js"
+      onerror="console.info('Playgama Bridge CDN unreachable locally; running in mock mode.')"
+    ></script>
+    <style>
+      :root {
+        --accent-blue: #3b82f6;
+        --accent-red: #ef4444;
+        --accent-green: #22c55e;
+        --accent-yellow: #eab308;
+        --accent-purple: #a855f7;
+        --panel-bg: rgba(15, 23, 42, 0.86);
+        --panel-border: rgba(148, 163, 184, 0.25);
+        --gravity-frame-color: rgba(59, 130, 246, 0.0);
+      }
+
+      * {
+        box-sizing: border-box;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-touch-callout: none;
+      }
+
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0b1120;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        color: #f8fafc;
+        touch-action: none;
+      }
+
+      #canvas-container {
+        position: fixed;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        z-index: 1;
+      }
+
+      #gravity-screen-frame {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 2;
+        box-shadow: inset 0 0 38px 6px var(--gravity-frame-color);
+        transition: box-shadow 0.2s ease;
+      }
+
+      #damage-flash-overlay {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 3;
+        background: radial-gradient(circle, rgba(239, 68, 68, 0) 40%, rgba(239, 68, 68, 0.65) 100%);
+        opacity: 0;
+        transition: opacity 0.12s ease-out;
+      }
+
+      #ui-root {
+        position: fixed;
+        inset: 0;
+        z-index: 10;
+        pointer-events: none;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        padding:
+          max(12px, env(safe-area-inset-top))
+          max(14px, env(safe-area-inset-right))
+          max(14px, env(safe-area-inset-bottom))
+          max(14px, env(safe-area-inset-left));
+      }
+
+      .ui-interactive {
+        pointer-events: auto;
+      }
+
+      /* Top Bar */
+      .hud-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .hud-stats {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+
+      .stat-pill {
+        background: var(--panel-bg);
+        border: 1px solid var(--panel-border);
+        backdrop-filter: blur(8px);
+        padding: 8px 14px;
+        border-radius: 14px;
+        display: flex;
+        flex-direction: column;
+        min-width: 105px;
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+      }
+
+      .stat-label {
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #94a3b8;
+        font-weight: 700;
+      }
+
+      .stat-value {
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: -0.02em;
+        color: #ffffff;
+      }
+
+      .stat-value.cash {
+        color: #4ade80;
+      }
+
+      .stat-value.combo {
+        color: #facc15;
+      }
+
+      .hud-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+
+      .btn {
+        pointer-events: auto;
+        min-height: 48px;
+        min-width: 48px;
+        padding: 10px 16px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: var(--panel-bg);
+        color: #f8fafc;
+        font-size: 14px;
+        font-weight: 800;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: transform 0.1s ease, background 0.15s ease, border-color 0.15s ease;
+        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+      }
+
+      .btn:hover {
+        background: rgba(30, 41, 59, 0.95);
+        border-color: rgba(255, 255, 255, 0.35);
+      }
+
+      .btn:active {
+        transform: scale(0.95);
+      }
+
+      .btn-primary {
+        background: linear-gradient(135deg, #f97316, #ea580c);
+        border-color: #fb923c;
+        color: #fff;
+      }
+
+      .btn-primary:hover {
+        background: linear-gradient(135deg, #fb923c, #f97316);
+      }
+
+      .btn-success {
+        background: linear-gradient(135deg, #22c55e, #16a34a);
+        border-color: #4ade80;
+        color: #fff;
+      }
+
+      .btn-reward {
+        background: linear-gradient(135deg, #eab308, #ca8a04);
+        border-color: #fde047;
+        color: #0f172a;
+      }
+
+      /* Middle HUD: Skeleton left & Level/Launch controls */
+      .hud-middle {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex: 1;
+        margin: 8px 0;
+        position: relative;
+      }
+
+      .skeleton-panel {
+        background: var(--panel-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        padding: 10px;
+        width: 112px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+      }
+
+      .skeleton-title {
+        font-size: 11px;
+        font-weight: 800;
+        color: #cbd5e1;
+        text-transform: uppercase;
+      }
+
+      .skeleton-svg {
+        width: 84px;
+        height: 148px;
+      }
+
+      .bone-rect {
+        fill: #22c55e;
+        stroke: #86efac;
+        stroke-width: 1.5;
+        rx: 3;
+        transition: fill 0.15s ease, stroke 0.15s ease;
+      }
+
+      .bone-rect.damaged {
+        fill: #f97316;
+        stroke: #fde047;
+        filter: drop-shadow(0 0 4px rgba(249, 115, 22, 0.7));
+      }
+
+      .bone-rect.broken {
+        fill: #ef4444;
+        stroke: #fecaca;
+        filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.95));
+      }
+
+      /* Launch Prompt Center */
+      .center-overlay {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 12px;
+        text-align: center;
+        width: max-content;
+        max-width: 86vw;
+      }
+
+      .lvl-badge {
+        background: rgba(15, 23, 42, 0.88);
+        padding: 8px 18px;
+        border-radius: 999px;
+        font-weight: 900;
+        font-size: 14px;
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      }
+
+      .walk-hint-badge {
+        background: rgba(15, 23, 42, 0.75);
+        padding: 5px 14px;
+        border-radius: 10px;
+        font-weight: 700;
+        font-size: 12px;
+        color: #bae6fd;
+      }
+
+      .launch-btn {
+        font-size: 22px;
+        padding: 18px 38px;
+        border-radius: 20px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        box-shadow: 0 10px 30px rgba(249, 115, 22, 0.5);
+        animation: pulseLaunch 1.6s infinite ease-in-out;
+      }
+
+      @keyframes pulseLaunch {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.06); }
+      }
+
+      /* Bottom HUD: Gravity Indicator + D-Pad */
+      .hud-bottom {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 12px;
+      }
+
+      .gravity-indicator-card {
+        background: var(--panel-bg);
+        border: 1px solid var(--panel-border);
+        border-radius: 16px;
+        padding: 10px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        min-width: 190px;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+      }
+
+      .gravity-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .gravity-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-weight: 900;
+        font-size: 16px;
+        padding: 3px 10px;
+        border-radius: 8px;
+        background: rgba(59, 130, 246, 0.25);
+        color: #60a5fa;
+      }
+
+      .cooldown-bar-bg {
+        width: 100%;
+        height: 8px;
+        background: rgba(255, 255, 255, 0.12);
+        border-radius: 999px;
+        overflow: hidden;
+      }
+
+      .cooldown-bar-fill {
+        height: 100%;
+        width: 100%;
+        background: linear-gradient(90deg, #38bdf8, #3b82f6);
+        transition: width 0.06s linear;
+      }
+
+      .charges-row {
+        display: flex;
+        gap: 5px;
+        align-items: center;
+      }
+
+      .charge-pip {
+        flex: 1;
+        height: 7px;
+        border-radius: 4px;
+        background: rgba(255, 255, 255, 0.15);
+      }
+
+      .charge-pip.active {
+        background: #facc15;
+        box-shadow: 0 0 6px rgba(250, 204, 21, 0.7);
+      }
+
+      /* Gravity Control Pad */
+      .gravity-dpad {
+        display: grid;
+        grid-template-columns: repeat(3, 52px);
+        grid-template-rows: repeat(2, 52px);
+        gap: 6px;
+      }
+
+      .dpad-btn {
+        pointer-events: auto;
+        width: 52px;
+        height: 52px;
+        border-radius: 12px;
+        border: 1px solid rgba(255, 255, 255, 0.22);
+        background: rgba(15, 23, 42, 0.88);
+        color: #f8fafc;
+        font-size: 18px;
+        font-weight: 900;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+        transition: transform 0.08s ease, background 0.15s ease;
+        touch-action: none;
+      }
+
+      .dpad-btn span.key-hint {
+        font-size: 9px;
+        color: #94a3b8;
+        margin-top: 2px;
+      }
+
+      .dpad-btn:active,
+      .dpad-btn.active-dir {
+        transform: scale(0.92);
+        border-color: #fff;
+        background: rgba(59, 130, 246, 0.55);
+      }
+
+      /* Floating Text Container */
+      #floating-text-layer {
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        z-index: 8;
+        overflow: hidden;
+      }
+
+      .floating-text {
+        position: absolute;
+        font-weight: 900;
+        font-size: 18px;
+        text-shadow: 0 2px 6px rgba(0, 0, 0, 0.85);
+        white-space: nowrap;
+        will-change: transform, opacity;
+        pointer-events: none;
+      }
+
+      /* Modal Windows (Results, Shop, Levels, Settings) */
+      .modal-backdrop {
+        position: fixed;
+        inset: 0;
+        background: rgba(2, 6, 23, 0.78);
+        backdrop-filter: blur(6px);
+        z-index: 30;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        pointer-events: auto;
+      }
+
+      .modal-backdrop.open {
+        display: flex;
+      }
+
+      .modal-card {
+        background: #0f172a;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        border-radius: 20px;
+        max-width: 580px;
+        width: 100%;
+        max-height: 88vh;
+        overflow-y: auto;
+        padding: 20px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.65);
+      }
+
+      .modal-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .modal-title {
+        font-size: 22px;
+        font-weight: 900;
+        margin: 0;
+      }
+
+      .grid-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+        gap: 10px;
+      }
+
+      .item-card {
+        background: rgba(30, 41, 59, 0.75);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        border-radius: 14px;
+        padding: 12px;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .item-card h4 {
+        margin: 0;
+        font-size: 15px;
+        color: #f8fafc;
+      }
+
+      .item-card p {
+        margin: 0;
+        font-size: 12px;
+        color: #94a3b8;
+      }
+
+      .result-stats-grid {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+
+      .result-stat-box {
+        background: rgba(30, 41, 59, 0.8);
+        border-radius: 12px;
+        padding: 12px;
+        text-align: center;
+      }
+
+      .result-stat-box .val {
+        font-size: 24px;
+        font-weight: 900;
+        color: #f8fafc;
+      }
+
+      .result-stat-box .lbl {
+        font-size: 12px;
+        color: #94a3b8;
+      }
+
+      /* Mobile Phone & Touch Adaptation (Portrait & Landscape) */
+      @media (max-width: 768px) {
+        #ui-root {
+          padding:
+            max(8px, env(safe-area-inset-top))
+            max(8px, env(safe-area-inset-right))
+            max(10px, env(safe-area-inset-bottom))
+            max(8px, env(safe-area-inset-left));
+        }
+
+        .hud-top {
+          gap: 6px;
+        }
+
+        .hud-stats {
+          gap: 5px;
+        }
+
+        .stat-pill {
+          min-width: 62px !important;
+          padding: 4px 8px;
+          border-radius: 10px;
+        }
+
+        .stat-pill.hide-mobile {
+          display: none;
+        }
+
+        .stat-label {
+          font-size: 8px;
+          letter-spacing: 0.04em;
+        }
+
+        .stat-value {
+          font-size: 14px;
+        }
+
+        .hud-actions {
+          gap: 5px;
+          width: 100%;
+          justify-content: flex-end;
+        }
+
+        .btn {
+          min-height: 36px;
+          min-width: 36px;
+          padding: 6px 10px;
+          font-size: 12px;
+          border-radius: 10px;
+          gap: 4px;
+        }
+
+        .key-hint {
+          display: none !important;
+        }
+
+        .skeleton-panel {
+          width: 68px;
+          padding: 5px;
+          border-radius: 12px;
+        }
+
+        .skeleton-title {
+          font-size: 8px;
+        }
+
+        .skeleton-svg {
+          width: 52px;
+          height: 92px;
+        }
+
+        .center-overlay {
+          gap: 8px;
+          top: 66% !important;
+        }
+
+        .lvl-badge {
+          font-size: 11px;
+          padding: 5px 12px;
+        }
+
+        .walk-hint-badge {
+          font-size: 10px;
+          padding: 4px 10px;
+        }
+
+        .launch-btn {
+          font-size: 16px;
+          padding: 12px 24px;
+          border-radius: 16px;
+        }
+
+        .hud-bottom {
+          gap: 8px;
+        }
+
+        .gravity-indicator-card {
+          min-width: 125px;
+          padding: 6px 10px;
+          border-radius: 12px;
+          gap: 4px;
+        }
+
+        .gravity-badge {
+          font-size: 12px;
+          padding: 2px 7px;
+        }
+
+        .gravity-dpad {
+          grid-template-columns: repeat(3, 50px);
+          grid-template-rows: repeat(2, 50px);
+          gap: 5px;
+        }
+
+        .dpad-btn {
+          width: 50px;
+          height: 50px;
+          font-size: 18px;
+          border-radius: 11px;
+        }
+
+        .modal-card {
+          padding: 14px;
+          border-radius: 16px;
+          max-height: 85dvh;
+          gap: 10px;
+        }
+
+        .modal-title {
+          font-size: 18px;
+        }
+
+        .grid-list {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      @media (max-height: 500px) {
+        .skeleton-panel {
+          width: 56px;
+          padding: 4px;
+        }
+        .skeleton-svg {
+          width: 42px;
+          height: 74px;
+        }
+        .center-overlay {
+          top: 60% !important;
+          gap: 6px;
+        }
+        .launch-btn {
+          font-size: 15px;
+          padding: 10px 20px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="canvas-container"></div>
+    <div id="gravity-screen-frame"></div>
+    <div id="damage-flash-overlay"></div>
+    <div id="floating-text-layer"></div>
+    <div id="ui-root"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
